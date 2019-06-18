@@ -4,7 +4,7 @@
 #define SENSOR_START 1
 #define SENSOR_END 0
 #define SENSOR_ENABLE( X ) ("/sys/bus/i2c/drivers/INA231/3-" #X "/enable")
-#define SENSOR_W( X ) ("/sys/bus/i2c/drivers/INA231/3-" #X "/_W")
+#define SENSOR_W( X ) ("/sys/bus/i2c/drivers/INA231/3-" #X "/sensor_W")
 #define NUM_SENSORS 4
 #define NUM_CORES 8
 
