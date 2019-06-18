@@ -31,7 +31,7 @@ cbuf_handle_t circular_buf_init(u_int8_t* buffer, size_t size, FILE * file) {
 void circular_buf_free(cbuf_handle_t cbuf) {
     assert(cbuf);
     assert(cbuf->file);
-    fwrite(cbuf->buffer,sizeof(char),cbuf->curr_size,cbuf->file); // write out the buffer
+    fwrite(cbuf->buffer,sizeof(u_int8_t),cbuf->curr_size,cbuf->file); // write out the buffer
     free(cbuf);
 }
 
