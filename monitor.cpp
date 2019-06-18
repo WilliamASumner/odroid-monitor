@@ -21,7 +21,7 @@
 #include "monitor.h"
 #include "circ_buff.h"
 
-int do_cleanup = 0; // edited by signals to force main loop to cleanup
+int signal_cleanup = 0; // edited by signals to force main loop to cleanup
 
 void print_args(char **arg_list, int num_args) {
     for (int i = 0; i < num_args; i++) {
@@ -202,11 +202,11 @@ void sig_handler(int signo) {
     switch (signo) {
         case SIGINT: // CTRL C
             fprintf(stderr,"caught SIGINT\n");
-            do_cleanup = 1;
+            signal_cleanup = 1;
             break;
         case SIGTERM: // another process is killing us
             fprintf(stderr,"caught SIGTERM\n");
-            do_cleanup = 1;
+            signal_cleanup = 1;
             break;
         default:
             fprintf(stderr,"error: improper signal found, unable to handle\n");
@@ -311,7 +311,7 @@ int main(int argc, char **argv) {
         pid_t return_pid = waitpid(pid, &status, WNOHANG);
         int all_good = 1;
 
-        while ((return_pid = waitpid(pid,&status,WNOHANG)) == 0 && all_good != -2 && !do_cleanup) { // while the thread isnt done
+        while ((return_pid = waitpid(pid,&status,WNOHANG)) == 0 && all_good != -2 && !signal_cleanup) { // while the thread isnt done
             all_good = get_cpu_config(pid,cpu_handle);
             // all_good = get_power(state,p_stats);
             nanosleep(&del,&rem); // sleep for the requisite amount of time
