@@ -39,9 +39,9 @@ void free_args(char **arg_list, int num_args) {
     free(arg_list);
 }
 
-void toggle_sensors(struct odroid_state * state, int state_code) {
+void toggle_sensors(struct odroid_state * state, char state_code) {
     int i,result;
-    int code = 1;//state_code;
+    char code = state_code;
     for (i = 0; i < NUM_SENSORS; i++) {
         result = write(state->enable_fds[i],&code,sizeof(code));
         if (result != sizeof(code)) {
@@ -53,10 +53,10 @@ void toggle_sensors(struct odroid_state * state, int state_code) {
 }
 
 void init_odroid_state(struct odroid_state * state) {
-    state->enable_fds[0] = open(SENSOR_ENABLE(0040),O_RDWR); // setup enables
-    state->enable_fds[1] = open(SENSOR_ENABLE(0041),O_RDWR);
-    state->enable_fds[2] = open(SENSOR_ENABLE(0044),O_RDWR);
-    state->enable_fds[3] = open(SENSOR_ENABLE(0045),O_RDWR);
+    state->enable_fds[0] = open(SENSOR_ENABLE(0045),O_RDWR); // setup enables
+    state->enable_fds[1] = open(SENSOR_ENABLE(0040),O_RDWR);
+    state->enable_fds[2] = open(SENSOR_ENABLE(0041),O_RDWR);
+    state->enable_fds[3] = open(SENSOR_ENABLE(0044),O_RDWR);
 
     int i;
     for (i = 0; i < NUM_SENSORS; i++) {
@@ -71,10 +71,10 @@ void init_odroid_state(struct odroid_state * state) {
 	sleep(5); // allow sensors to warm up
 
 
-    state->read_fds[0] = open(SENSOR_W(0040),O_RDONLY); // setup the reading of the sensors
-    state->read_fds[1] = open(SENSOR_W(0041),O_RDONLY);
-    state->read_fds[2] = open(SENSOR_W(0044),O_RDONLY);
-    state->read_fds[3] = open(SENSOR_W(0045),O_RDONLY);
+    state->read_fds[0] = open(SENSOR_W(0045),O_RDONLY); // setup the reading of the sensors
+    state->read_fds[1] = open(SENSOR_W(0040),O_RDONLY);
+    state->read_fds[2] = open(SENSOR_W(0041),O_RDONLY);
+    state->read_fds[3] = open(SENSOR_W(0044),O_RDONLY);
 
     for (i = 0; i < NUM_SENSORS; i++) {
         if (state->read_fds[i] == -1 || state->read_fds[i] == NULL) {
@@ -101,8 +101,8 @@ int get_power(struct odroid_state * state, cbuf_handle_t handle) {
     char raw_data[10];
 	for (i = 0; i < NUM_SENSORS; i++) {
 		if (pread(state->read_fds[i], raw_data,sizeof(raw_data),0) > 0) {
-			raw_data[9] = ';'; // null terminate
-			raw_data[8] = 0; // null terminate
+			raw_data[8] = ';'; // null terminate
+			raw_data[9] = 0; // null terminate
 			if (circular_buf_put_bytes(handle,(u_int8_t *)raw_data, strlen(raw_data)) != strlen(raw_data)) {
 				fprintf(stderr,"error: unable to write to buffer\n");
 				return -2;
@@ -153,7 +153,7 @@ int get_cid(int pid,int tid) { // opens stats file and gets cid of task
     return cid;
 }
 
-int get_time_stamp(cbuf_handle_t handle) { // just writes the timestamp
+int get_timestamp(cbuf_handle_t handle) { // just writes the timestamp
 	struct timeval retrieve; // timestamp
 	char time_str[100];
 	gettimeofday(&retrieve,0); // get timestamp
@@ -188,7 +188,7 @@ int get_cpu_config(int proc_pid, cbuf_handle_t handle) { // writes the cpu_confi
 #endif
 		continue;
             }
-            snprintf(cid_str,sizeof(cid_str),"%d,%d;",tid,cid); // write tid,cid pairs
+            snprintf(cid_str,sizeof(cid_str),"(%d,%d);",tid,cid); // write tid,cid pairs
             if (circular_buf_put_bytes(handle,(u_int8_t *)cid_str, strlen(cid_str)) != strlen(cid_str)) {
                 fprintf(stderr,"error: unable to write to buffer\n");
                 closedir(proc_dir);
@@ -252,7 +252,13 @@ int main(int argc, char **argv) {
     u_int8_t * buffer = (u_int8_t *)malloc(sizeof(u_int8_t)*buffer_size);
     char **new_argv;
     char prog_name[100];
+	char header_str[] = "Timestamp:SENS_A7;SENS_A15;SENS_MEM;SENS_GPU;(TID,CORE_ID);[(TID,CORE_ID);...]\n";
     cbuf_handle_t cpu_handle = circular_buf_init(buffer,buffer_size,file);
+	if (circular_buf_put_bytes(cpu_handle,(u_int8_t *)header_str, strlen(header_str)) != strlen(header_str)) {
+		fprintf(stderr,"error writing to results file\n");
+		circular_buf_free(cpu_handle);
+		exit(1);
+	}
 
     // ARGS settings
 
@@ -266,6 +272,10 @@ int main(int argc, char **argv) {
     del.tv_nsec = 1000L * atol(argv[1]); // convert us seconds to proper ns
     int pid = -1;
     int will_attach = 0;
+
+	struct odroid_state * state = (struct odroid_state *)malloc(sizeof(struct odroid_state));
+	init_odroid_state(state); // start up sensors
+
 
     if (atoi(argv[2]) < 1) { // supplied a non-valid pid
         new_argv = (char **)malloc((argc-num_args_to_skip)*sizeof(char *)); // ./name and interval are removed
@@ -294,6 +304,7 @@ int main(int argc, char **argv) {
         will_attach = 1;
     }
 
+
     if (pid == 0) { // child
         print_args(new_argv,argc-num_args_to_skip);
         execvp(prog_name,new_argv);
@@ -319,17 +330,17 @@ int main(int argc, char **argv) {
             printf("succesfully attached\n");
         }
 
-		struct odroid_state * state = (struct odroid_state *)malloc(sizeof(struct odroid_state));
-        init_odroid_state(state); // start up sensors
 
         int status;
         pid_t return_pid = waitpid(pid, &status, WNOHANG);
         int all_good = 1;
 
         while ((return_pid = waitpid(pid,&status,WNOHANG)) == 0 && all_good != -2 && !signal_cleanup) { // while the thread isnt done
-			//all_good = get_time(cpu_handle);
-            all_good = get_power(state,cpu_handle);
-            //all_good = get_cpu_config(pid,cpu_handle);
+			if ((all_good = get_timestamp(cpu_handle)) == -2) // TODO clean this up
+				break;
+            if ((all_good = get_power(state,cpu_handle)) == -2)
+				break;
+            all_good = get_cpu_config(pid,cpu_handle);
             nanosleep(&del,&rem); // sleep for the requisite amount of time
         }
         if (return_pid < 0 && !will_attach )
