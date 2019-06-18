@@ -1,12 +1,18 @@
 #ifndef MONITOR_H
 #define MONITOR_H
 
-#define SENSOR_START 1
-#define SENSOR_END 0
+#define SENSOR_START '1'
+#define SENSOR_END   '0'
 #define SENSOR_ENABLE( X ) ("/sys/bus/i2c/drivers/INA231/3-" #X "/enable")
-#define SENSOR_W( X ) ("/sys/bus/i2c/drivers/INA231/3-" #X "/sensor_W")
-#define NUM_SENSORS 4
-#define NUM_CORES 8
+#define SENSOR_W( X )      ("/sys/bus/i2c/drivers/INA231/3-" #X "/sensor_W")
+
+#define NUM_SENSORS  4
+#define NUM_CORES    8
+
+#define SENS_A7      0045
+#define SENS_A15     0040
+#define SENS_MEM     0041
+#define SENS_GPU     0044
 
 
 struct odroid_state {
