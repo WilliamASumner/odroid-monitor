@@ -60,7 +60,7 @@ void init_odroid_state(struct odroid_state * state) {
 
     int i;
     for (i = 0; i < NUM_SENSORS; i++) {
-        if (state->enable_fds[i] == -1 || state->enable_fds[i] == NULL) {
+        if (state->enable_fds[i] == -1 || !state->enable_fds[i]) {
             fprintf(stderr,"Error: could not init odroid_state! Unable to open enables\n");
             return;
         }
@@ -77,7 +77,7 @@ void init_odroid_state(struct odroid_state * state) {
     state->read_fds[3] = open(SENSOR_W(0044),O_RDONLY);
 
     for (i = 0; i < NUM_SENSORS; i++) {
-        if (state->read_fds[i] == -1 || state->read_fds[i] == NULL) {
+        if (state->read_fds[i] == -1 || !state->read_fds[i]) {
             fprintf(stderr,"Error: could not init odroid_state! Unable to open sensor data\n");
             return;
         }
