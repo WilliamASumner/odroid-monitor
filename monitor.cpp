@@ -1,0 +1,327 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <signal.h>
+
+#include <string>
+#include <fstream>
+#include <dirent.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/time.h>
+#include <sys/ptrace.h>
+
+#include <sched.h>
+#include <fcntl.h>
+
+#include "monitor.h"
+#include "circ_buff.h"
+
+int do_cleanup = 0; // edited by signals to force main loop to cleanup
+
+void print_args(char **arg_list, int num_args) {
+    for (int i = 0; i < num_args; i++) {
+        if (arg_list[i] == NULL)
+            printf("NULL ");
+        else
+            printf("%s ",arg_list[i]);
+    }
+    printf("\n");
+}
+
+void free_args(char **arg_list, int num_args) {
+    for(int i = 0; i < num_args; i++)
+        free(arg_list[i]);
+    free(arg_list);
+}
+
+void toggle_sensors(struct odroid_state * state, int state_code) {
+    int i,result;
+    int code = state_code;
+    for (i = 0; i < NUM_SENSORS; i++) {
+        result = write(state->enable_fds[i],&code,sizeof(int));
+        if (result != 1) {
+            fprintf(stderr,"error toggling sensors!\n");
+            return;
+        }
+    }
+}
+
+void init_odroid_state(struct odroid_state * state) {
+    state->enable_fds[0] = open(SENSOR_ENABLE(0040),O_RDWR);
+    state->enable_fds[1] = open(SENSOR_ENABLE(0041),O_RDWR);
+    state->enable_fds[2] = open(SENSOR_ENABLE(0044),O_RDWR);
+    state->enable_fds[3] = open(SENSOR_ENABLE(0045),O_RDWR);
+
+    int i;
+    for (i = 0; i < NUM_SENSORS; i++) {
+        if (state->enable_fds[i] == -1) {
+            fprintf(stderr,"Error: could not init odroid_state!\n");
+            return;
+        }
+    }
+
+    toggle_sensors(state,SENSOR_START); // turn the sensors on
+
+    state->read_fds[0] = open(SENSOR_W(0040),O_RDONLY); // setup the reading of the sensors
+    state->read_fds[1] = open(SENSOR_W(0041),O_RDONLY);
+    state->read_fds[2] = open(SENSOR_W(0044),O_RDONLY);
+    state->read_fds[3] = open(SENSOR_W(0045),O_RDONLY);
+
+    for (i = 0; i < NUM_SENSORS; i++) {
+        if (state->read_fds[i] == -1) {
+            fprintf(stderr,"Error: could not init odroid_state!\n");
+            return;
+        }
+    }
+
+}
+
+void end_odroid_state(struct odroid_state * state) { // cleanup
+    int i;
+    toggle_sensors(state,SENSOR_END);
+    for (i = 0; i < NUM_SENSORS; i++) { // close file descriptors
+        close(state->read_fds[i]);
+        close(state->enable_fds[i]);
+    }
+}
+
+void get_power(struct odroid_state * state, cbuf_handle_t buffer) {
+    int i;
+    char raw_data[8];
+    for (i = 0; i < NUM_SENSORS; i++) {
+        if (pread(state->read_fds[i], raw_data,sizeof(raw_data),0) > 0) {
+            printf("%s W\n",raw_data);
+        }
+    }
+}
+
+int get_cid(int pid,int tid) { // opens stats file and gets cid of task
+    char filename[100];
+    int cid = -1;
+    snprintf(filename,100,"/proc/%d/task/%d/stat",pid,tid);
+    std::ifstream stat_file(filename);
+    if (!stat_file) {
+        fprintf(stderr,"error opening stat file: %s\n",filename);
+        fprintf(stderr,"Error %d: %s\n",errno,strerror(errno));
+        stat_file.close();
+        return -1;
+    }
+    std::string line;
+    if (getline(stat_file,line)) {
+        std::size_t index,prev;
+        int field_number = 2;   // the name field is the second one
+        index = line.find(')'); // find the end of the name field
+        prev = index;
+        index = line.find(' ',index);
+        while(index != std::string::npos && field_number < 39) {
+            prev = index+1;
+            index = line.find(' ',index+1);
+            field_number += 1;
+        }
+        if (prev != std::string::npos && index != std::string::npos)
+            cid = std::stoi(line.substr(prev,index-prev));
+        else {
+            fprintf(stderr,"error: the index was not found\n");
+            stat_file.close();
+            return -1;
+        }
+    } else {
+        fprintf(stderr,"error: could not read stat file: %s\n",filename);
+        stat_file.close();
+        return -1;
+    }
+    stat_file.close();
+    return cid;
+}
+
+
+int get_cpu_config(int proc_pid, cbuf_handle_t handle) {
+    DIR *proc_dir;
+
+    char dirname[100];
+    char cid_str[1024];
+    int tid,cid;
+    snprintf(dirname, sizeof(dirname), "/proc/%d/task/",proc_pid);
+    proc_dir = opendir(dirname);
+
+    if (proc_dir) {
+        struct dirent *entry;
+        while ((entry = readdir(proc_dir)) != NULL) { /* for each thread id */
+            if(entry->d_name[0] == '.') // if the default entries
+                continue;
+
+            tid = atoi(entry->d_name);
+            cid = get_cid(proc_pid,tid);
+            if (cid == -1) {
+                fprintf(stderr,"error: unable to get core id\n");
+                closedir(proc_dir);
+                return -1;
+            }
+            snprintf(cid_str,sizeof(cid_str),"%d,%d;",tid,cid); // write tid,cid pairs
+            if (circular_buf_put_bytes(handle,(u_int8_t *)cid_str, strlen(cid_str)) != strlen(cid_str)) {
+                fprintf(stderr,"error: unable to write to buffer\n");
+                closedir(proc_dir);
+                return -1;
+            }
+        }
+    } else {
+        fprintf(stderr,"error: unable to read process directory %s\n",dirname);
+        closedir(proc_dir);
+        return -1;
+    }
+    if (circular_buf_put_byte_checked(handle,'\n') != 0) { // write \n between lists
+        fprintf(stderr,"error: unable to write to buffer\n");
+        closedir(proc_dir);
+        return -1;
+    }
+    closedir(proc_dir);
+    return 1;
+}
+
+void sig_handler(int signo) { // TODO update this 
+    switch (signo) {
+        case SIGINT: // CTRL C
+            fprintf(stderr,"caught SIGINT\n");
+            do_cleanup = 1;
+            break;
+        case SIGTERM: // another process is killing us
+            fprintf(stderr,"caught SIGTERM\n");
+            do_cleanup = 1;
+            break;
+        default:
+            fprintf(stderr,"error: improper signal found, unable to handle\n");
+            exit(1);
+    }
+}
+
+int main(int argc, char **argv) {
+
+    // SIGNAL CATCHING
+    struct sigaction new_action;
+    new_action.sa_handler = sig_handler;
+    sigemptyset(&new_action.sa_mask);
+    new_action.sa_flags = 0;
+
+    if (sigaction(SIGINT,&new_action,NULL) == -1) {
+        fprintf(stderr,"error: cannot catch SIGINT\n");
+    }
+    if (sigaction(SIGTERM,&new_action,NULL) == -1) {
+        fprintf(stderr,"error: cannot catch SIGTERM\n");
+    }
+
+    int buffer_size = 104857600; // 100 mb, maybe change this
+    char out_filename[] = "monitor-results";
+    //struct odroid_state * state = (struct odroid_state *)malloc(sizeof(struct odroid_state *));
+    FILE * file = fopen (out_filename, "w");
+    if (!file) {
+        fprintf(stderr,"error: could not open '%s', Error %d:%s\n",out_filename,errno,strerror(errno));
+        exit(1);
+    }
+    u_int8_t * buffer = (u_int8_t *)malloc(sizeof(u_int8_t)*buffer_size);
+    char **new_argv;
+    char prog_name[100];
+    cbuf_handle_t cpu_handle = circular_buf_init(buffer,buffer_size,file);
+
+    // ARGS settings
+
+    int num_args_to_skip = 3; //./prog_name [interval] [pid] command
+    if (argc - num_args_to_skip < 0 ) {
+        fprintf(stderr,"error, too few arguments\n");
+        exit(1);
+    }
+    struct timespec del,rem;
+    del.tv_sec = 0;
+    del.tv_nsec = 1000L * atol(argv[1]); // convert us seconds to proper ns
+    int pid = -1;
+    int will_attach = 0;
+
+    if (atoi(argv[2]) < 1) { // supplied a non-valid pid
+        new_argv = (char **)malloc((argc-num_args_to_skip)*sizeof(char *)); // ./name and interval are removed
+        if (new_argv == NULL) {
+            fprintf(stderr,"Error: error allocating memory\n");
+            exit(1);
+        } else if (argc < 3) {
+            fprintf(stderr,"Error: incorrect number of inputs\n");
+            exit(1);
+        }
+        strncpy(prog_name,argv[num_args_to_skip],100);
+
+        for (int i = num_args_to_skip; i < argc; i++) {
+            new_argv[i-num_args_to_skip] = (char *)malloc(100); // 100 character limit on individual args
+            if (new_argv[i-num_args_to_skip] == NULL)  {
+                fprintf(stderr, "Error copying new argv array\n");
+                free_args(new_argv,i-num_args_to_skip); // just cleanup what we can
+                exit(1);
+            }
+            strncpy(new_argv[i-num_args_to_skip],argv[i],100);
+        }
+        new_argv[argc-num_args_to_skip] = (char *)NULL; // terminated by NULL
+        pid = fork();
+    } else {
+        pid = atoi(argv[2]);
+        will_attach = 1;
+    }
+
+    if (pid == 0) { // child
+        print_args(new_argv,argc-num_args_to_skip);
+        execvp(prog_name,new_argv);
+        fprintf(stderr,"unable to execute program %s\n",prog_name);
+        exit(1);
+
+    } else { // parent of the fork
+        //cpu_set_t mask;
+        //CPU_ZERO(&mask);
+        //CPU_SET(7,&mask); // set to same big core every time to increase predictablity
+        //sched_setaffinity(0,sizeof(mask),&mask);
+
+
+
+        if (will_attach) {
+            if (ptrace(PTRACE_SEIZE,pid, NULL, NULL) == -1){ // attach to that guy, but dont stop it
+                fprintf(stderr,"error: could not seize process: %d\n",pid);
+                fprintf(stderr,"try running as root, alternatively process may not exist\n");
+                free_args(new_argv,argc - num_args_to_skip);
+                circular_buf_free(cpu_handle);
+                fclose(file);
+                free(buffer);
+                return -1;
+
+            }
+            printf("succesfully attached\n");
+        }
+        //init_odroid_state(state); // start up sensors
+        int status;
+
+        pid_t return_pid = waitpid(pid, &status, WNOHANG);
+        int all_good = 1;
+        while ((return_pid = waitpid(pid,&status,WNOHANG)) == 0 && all_good != -1 && !do_cleanup) { // while the thread isnt done
+            //struct timeval retrieve; // timestamp
+            //gettimeofday(&retrieve,0); // get timestamp
+            /*snprintf(cid_str,sizeof(cid_str),"%ld.%06ld:",retrieve.tv_sec, retrieve.tv_usec); // write down the time of measurement in the standard format
+              if (circular_buf_put_bytes(handle,(u_int8_t *)cid_str, strlen(cid_str)) != strlen(cid_str)) {
+              fprintf(stderr,"error: unable to write to buffer\n");
+              }*/
+
+
+            all_good = get_cpu_config(pid,cpu_handle);
+            // all_good = get_power(state,p_stats);
+            nanosleep(&del,&rem); // sleep for the requisite amount of time
+        }
+        if (return_pid < 0 && !will_attach )
+            fprintf(stderr,"Error running child process\n");
+
+        // cleanup!
+        free_args(new_argv,argc - num_args_to_skip);
+        circular_buf_free(cpu_handle);
+        //end_odroid_state(state);
+        //free(state);
+        fclose(file);
+        free(buffer);
+    }
+    return 0;
+}
