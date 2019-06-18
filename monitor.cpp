@@ -67,6 +67,9 @@ void init_odroid_state(struct odroid_state * state) {
     }
 
     toggle_sensors(state,SENSOR_START); // turn the sensors on
+	printf("waiting for sensors to warm up...\n");
+	sleep(5); // allow sensors to warm up
+
 
     state->read_fds[0] = open(SENSOR_W(0040),O_RDONLY); // setup the reading of the sensors
     state->read_fds[1] = open(SENSOR_W(0041),O_RDONLY);
@@ -79,6 +82,8 @@ void init_odroid_state(struct odroid_state * state) {
             return;
         }
     }
+	printf("finished initializing sensors!\n");
+	
 
 }
 
