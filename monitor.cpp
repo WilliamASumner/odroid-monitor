@@ -106,8 +106,10 @@ int get_cid(int pid,int tid) { // opens stats file and gets cid of task
     snprintf(filename,100,"/proc/%d/task/%d/stat",pid,tid);
     std::ifstream stat_file(filename);
     if (!stat_file) {
+#ifdef DEBUG
         fprintf(stderr,"error opening stat file: %s\n",filename);
         fprintf(stderr,"Error %d: %s\n",errno,strerror(errno));
+#endif
         stat_file.close();
         return -1;
     }
@@ -139,13 +141,23 @@ int get_cid(int pid,int tid) { // opens stats file and gets cid of task
     return cid;
 }
 
+int get_time_stamp(cbuf_handle_t handle) { // just writes the timestamp
+	struct timeval retrieve; // timestamp
+	char time_str[100];
+	gettimeofday(&retrieve,0); // get timestamp
+	snprintf(time_str,100,"%ld.%06ld:",retrieve.tv_sec, retrieve.tv_usec); // write down the time of measurement in the standard format
+	if (circular_buf_put_bytes(handle,(u_int8_t *)cid_str, strlen(cid_str)) != strlen(cid_str)) {
+		fprintf(stderr,"error: unable to write to buffer\n");
+	}
 
-int get_cpu_config(int proc_pid, cbuf_handle_t handle) {
+}
+
+int get_cpu_config(int proc_pid, cbuf_handle_t handle) { // writes the cpu_config
     DIR *proc_dir;
-
     char dirname[100];
     char cid_str[1024];
     int tid,cid;
+
     snprintf(dirname, sizeof(dirname), "/proc/%d/task/",proc_pid);
     proc_dir = opendir(dirname);
 
@@ -158,32 +170,35 @@ int get_cpu_config(int proc_pid, cbuf_handle_t handle) {
             tid = atoi(entry->d_name);
             cid = get_cid(proc_pid,tid);
             if (cid == -1) {
+#ifdef DEBUG
                 fprintf(stderr,"error: unable to get core id\n");
-                closedir(proc_dir);
-                return -1;
+#endif
+		continue;
             }
             snprintf(cid_str,sizeof(cid_str),"%d,%d;",tid,cid); // write tid,cid pairs
             if (circular_buf_put_bytes(handle,(u_int8_t *)cid_str, strlen(cid_str)) != strlen(cid_str)) {
                 fprintf(stderr,"error: unable to write to buffer\n");
                 closedir(proc_dir);
-                return -1;
+                return -2;
             }
         }
     } else {
+#ifdef DEBUG
         fprintf(stderr,"error: unable to read process directory %s\n",dirname);
+#endif
         closedir(proc_dir);
-        return -1;
+        return -2;
     }
     if (circular_buf_put_byte_checked(handle,'\n') != 0) { // write \n between lists
         fprintf(stderr,"error: unable to write to buffer\n");
         closedir(proc_dir);
-        return -1;
+        return -2;
     }
     closedir(proc_dir);
     return 1;
 }
 
-void sig_handler(int signo) { // TODO update this 
+void sig_handler(int signo) { 
     switch (signo) {
         case SIGINT: // CTRL C
             fprintf(stderr,"caught SIGINT\n");
@@ -231,7 +246,7 @@ int main(int argc, char **argv) {
 
     int num_args_to_skip = 3; //./prog_name [interval] [pid] command
     if (argc - num_args_to_skip < 0 ) {
-        fprintf(stderr,"error, too few arguments\n");
+        fprintf(stderr,"usage: %s [interval] [pid to attach or -1] [command...]\n",argv[0]);
         exit(1);
     }
     struct timespec del,rem;
@@ -274,18 +289,15 @@ int main(int argc, char **argv) {
         exit(1);
 
     } else { // parent of the fork
-        //cpu_set_t mask;
-        //CPU_ZERO(&mask);
-        //CPU_SET(7,&mask); // set to same big core every time to increase predictablity
-        //sched_setaffinity(0,sizeof(mask),&mask);
-
-
+        cpu_set_t mask;
+        CPU_ZERO(&mask);
+        CPU_SET(7,&mask); // set to same big core every time to increase predictablity
+        sched_setaffinity(0,sizeof(mask),&mask);
 
         if (will_attach) {
             if (ptrace(PTRACE_SEIZE,pid, NULL, NULL) == -1){ // attach to that guy, but dont stop it
                 fprintf(stderr,"error: could not seize process: %d\n",pid);
                 fprintf(stderr,"try running as root, alternatively process may not exist\n");
-                free_args(new_argv,argc - num_args_to_skip);
                 circular_buf_free(cpu_handle);
                 fclose(file);
                 free(buffer);
@@ -296,18 +308,10 @@ int main(int argc, char **argv) {
         }
         //init_odroid_state(state); // start up sensors
         int status;
-
         pid_t return_pid = waitpid(pid, &status, WNOHANG);
         int all_good = 1;
-        while ((return_pid = waitpid(pid,&status,WNOHANG)) == 0 && all_good != -1 && !do_cleanup) { // while the thread isnt done
-            //struct timeval retrieve; // timestamp
-            //gettimeofday(&retrieve,0); // get timestamp
-            /*snprintf(cid_str,sizeof(cid_str),"%ld.%06ld:",retrieve.tv_sec, retrieve.tv_usec); // write down the time of measurement in the standard format
-              if (circular_buf_put_bytes(handle,(u_int8_t *)cid_str, strlen(cid_str)) != strlen(cid_str)) {
-              fprintf(stderr,"error: unable to write to buffer\n");
-              }*/
 
-
+        while ((return_pid = waitpid(pid,&status,WNOHANG)) == 0 && all_good != -2 && !do_cleanup) { // while the thread isnt done
             all_good = get_cpu_config(pid,cpu_handle);
             // all_good = get_power(state,p_stats);
             nanosleep(&del,&rem); // sleep for the requisite amount of time
@@ -316,12 +320,13 @@ int main(int argc, char **argv) {
             fprintf(stderr,"Error running child process\n");
 
         // cleanup!
-        free_args(new_argv,argc - num_args_to_skip);
         circular_buf_free(cpu_handle);
+		if (!will_attach)
+			free_args(new_argv,argc - num_args_to_skip);
+        free(buffer);
         //end_odroid_state(state);
         //free(state);
         fclose(file);
-        free(buffer);
     }
     return 0;
 }
