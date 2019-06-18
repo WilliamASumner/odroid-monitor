@@ -6,8 +6,9 @@
 CC        := gcc # compiler
 CPP        := g++ # compiler
 MKDIR_P   := mkdir -p # mkdir command
-CFLAGS    := -Wall# cflags
-DFLAGS    := -g -DDEBUG -D_GNU_SOURCE -O0# debug flags
+
+CFLAGS    := -Wall -D_GNU_SOURCE -std=c++11# cflags
+DFLAGS    := -g -DDEBUG -O0 # debug flags
 LDFLAGS   := # lex and yacc flags
 
 # dir names
