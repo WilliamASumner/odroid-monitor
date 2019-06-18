@@ -1,0 +1,4 @@
+*.out
+release/
+debug/
+*.tar
