@@ -1,0 +1,7 @@
+*.out
+release/
+debug/
+*.tar
+monitor
+monitordebug
+valgrind-test.sh
