@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <sys/ptrace.h>
+#include <sys/ioctl.h>
 
 #include <sched.h>
 #include <fcntl.h>
@@ -46,7 +47,7 @@ void toggle_sensors(struct odroid_state * state, char state_code) {
         result = write(state->enable_fds[i],&code,sizeof(code));
         if (result != sizeof(code)) {
             fprintf(stderr,"error toggling sensors!\n");
-			fprintf(stderr,"Error %d: %s\n",errno,strerror(errno));
+            fprintf(stderr,"Error %d: %s\n",errno,strerror(errno));
             return;
         }
     }
@@ -67,8 +68,8 @@ void init_odroid_state(struct odroid_state * state) {
     }
 
     toggle_sensors(state,SENSOR_START); // turn the sensors on
-	printf("waiting for sensors to warm up...\n");
-	sleep(5); // allow sensors to warm up
+    printf("waiting for sensors to warm up...\n");
+    sleep(5); // allow sensors to warm up
 
 
     state->read_fds[0] = open(SENSOR_W(0045),O_RDONLY); // setup the reading of the sensors
@@ -82,8 +83,8 @@ void init_odroid_state(struct odroid_state * state) {
             return;
         }
     }
-	printf("finished initializing sensors!\n");
-	
+    printf("finished initializing sensors!\n");
+    
 
 }
 
@@ -96,20 +97,36 @@ void end_odroid_state(struct odroid_state * state) { // cleanup
     }
 }
 
+int get_power_ioctl(struct odroid_state * state, cbuf_handle_t handle) {
+    int i;
+    char raw_data[10];
+    for (i = 0; i < NUM_SENSORS; i++) {
+        if (pread(state->read_fds[i], raw_data,sizeof(raw_data),0) > 0) {
+            raw_data[8] = ';'; // null terminate
+            raw_data[9] = 0; // null terminate
+            if (circular_buf_put_bytes(handle,(u_int8_t *)raw_data, strlen(raw_data)) != strlen(raw_data)) {
+                fprintf(stderr,"error: unable to write to buffer\n");
+                return -2;
+            }
+        }
+    }
+    return 1;
+}
+
 int get_power(struct odroid_state * state, cbuf_handle_t handle) {
     int i;
     char raw_data[10];
-	for (i = 0; i < NUM_SENSORS; i++) {
-		if (pread(state->read_fds[i], raw_data,sizeof(raw_data),0) > 0) {
-			raw_data[8] = ';'; // null terminate
-			raw_data[9] = 0; // null terminate
-			if (circular_buf_put_bytes(handle,(u_int8_t *)raw_data, strlen(raw_data)) != strlen(raw_data)) {
-				fprintf(stderr,"error: unable to write to buffer\n");
-				return -2;
-			}
-		}
-	}
-	return 1;
+    for (i = 0; i < NUM_SENSORS; i++) {
+        if (pread(state->read_fds[i], raw_data,sizeof(raw_data),0) > 0) {
+            raw_data[8] = ';'; // null terminate
+            raw_data[9] = 0; // null terminate
+            if (circular_buf_put_bytes(handle,(u_int8_t *)raw_data, strlen(raw_data)) != strlen(raw_data)) {
+                fprintf(stderr,"error: unable to write to buffer\n");
+                return -2;
+            }
+        }
+    }
+    return 1;
 }
 
 int get_cid(int pid,int tid) { // opens stats file and gets cid of task
@@ -154,15 +171,15 @@ int get_cid(int pid,int tid) { // opens stats file and gets cid of task
 }
 
 int get_timestamp(cbuf_handle_t handle) { // just writes the timestamp
-	struct timeval retrieve; // timestamp
-	char time_str[100];
-	gettimeofday(&retrieve,0); // get timestamp
-	snprintf(time_str,100,"%ld.%06ld:",retrieve.tv_sec, retrieve.tv_usec); // write down the time of measurement in the standard format
-	if (circular_buf_put_bytes(handle,(u_int8_t *)time_str, strlen(time_str)) != strlen(time_str)) {
-		fprintf(stderr,"error: unable to write to buffer\n");
-		return -2;
-	}
-	return 1;
+    struct timeval retrieve; // timestamp
+    char time_str[100];
+    gettimeofday(&retrieve,0); // get timestamp
+    snprintf(time_str,100,"%ld.%06ld:",retrieve.tv_sec, retrieve.tv_usec); // write down the time of measurement in the standard format
+    if (circular_buf_put_bytes(handle,(u_int8_t *)time_str, strlen(time_str)) != strlen(time_str)) {
+        fprintf(stderr,"error: unable to write to buffer\n");
+        return -2;
+    }
+    return 1;
 }
 
 int get_cpu_config(int proc_pid, cbuf_handle_t handle) { // writes the cpu_config
@@ -186,7 +203,7 @@ int get_cpu_config(int proc_pid, cbuf_handle_t handle) { // writes the cpu_confi
 #ifdef DEBUG
                 fprintf(stderr,"error: unable to get core id\n");
 #endif
-		continue;
+        continue;
             }
             snprintf(cid_str,sizeof(cid_str),"(%d,%d);",tid,cid); // write tid,cid pairs
             if (circular_buf_put_bytes(handle,(u_int8_t *)cid_str, strlen(cid_str)) != strlen(cid_str)) {
@@ -252,13 +269,13 @@ int main(int argc, char **argv) {
     u_int8_t * buffer = (u_int8_t *)malloc(sizeof(u_int8_t)*buffer_size);
     char **new_argv;
     char prog_name[100];
-	char header_str[] = "Timestamp:SENS_A7;SENS_A15;SENS_MEM;SENS_GPU;(TID,CORE_ID);[(TID,CORE_ID);...]\n";
+    char header_str[] = "Timestamp:SENS_A7;SENS_A15;SENS_MEM;SENS_GPU;(TID,CORE_ID);[(TID,CORE_ID);...]\n";
     cbuf_handle_t cpu_handle = circular_buf_init(buffer,buffer_size,file);
-	if (circular_buf_put_bytes(cpu_handle,(u_int8_t *)header_str, strlen(header_str)) != strlen(header_str)) {
-		fprintf(stderr,"error writing to results file\n");
-		circular_buf_free(cpu_handle);
-		exit(1);
-	}
+    if (circular_buf_put_bytes(cpu_handle,(u_int8_t *)header_str, strlen(header_str)) != strlen(header_str)) {
+        fprintf(stderr,"error writing to results file\n");
+        circular_buf_free(cpu_handle);
+        exit(1);
+    }
 
     // ARGS settings
 
@@ -273,8 +290,8 @@ int main(int argc, char **argv) {
     int pid = -1;
     int will_attach = 0;
 
-	struct odroid_state * state = (struct odroid_state *)malloc(sizeof(struct odroid_state));
-	init_odroid_state(state); // start up sensors
+    struct odroid_state * state = (struct odroid_state *)malloc(sizeof(struct odroid_state));
+    init_odroid_state(state); // start up sensors
 
 
     if (atoi(argv[2]) < 1) { // supplied a non-valid pid
@@ -336,10 +353,10 @@ int main(int argc, char **argv) {
         int all_good = 1;
 
         while ((return_pid = waitpid(pid,&status,WNOHANG)) == 0 && all_good != -2 && !signal_cleanup) { // while the thread isnt done
-			if ((all_good = get_timestamp(cpu_handle)) == -2) // TODO clean this up
-				break;
+            if ((all_good = get_timestamp(cpu_handle)) == -2) // TODO clean this up
+                break;
             if ((all_good = get_power(state,cpu_handle)) == -2)
-				break;
+                break;
             all_good = get_cpu_config(pid,cpu_handle);
             nanosleep(&del,&rem); // sleep for the requisite amount of time
         }
@@ -348,20 +365,20 @@ int main(int argc, char **argv) {
 
         // cleanup!
 #ifdef DEBUG
-		fprintf(stderr,"writing out data...\n");
+        fprintf(stderr,"writing out data...\n");
 #endif
         circular_buf_free(cpu_handle);
-		if (!will_attach)
-			free_args(new_argv,argc - num_args_to_skip);
+        if (!will_attach)
+            free_args(new_argv,argc - num_args_to_skip);
         free(buffer);
 #ifdef DEBUG
-		fprintf(stderr,"ending odroid state...\n");
+        fprintf(stderr,"ending odroid state...\n");
 #endif
         end_odroid_state(state);
         free(state);
         fclose(file);
 #ifdef DEBUG
-		fprintf(stderr,"finished.\n");
+        fprintf(stderr,"finished.\n");
 #endif
     }
     return 0;
