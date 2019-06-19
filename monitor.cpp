@@ -34,9 +34,20 @@ void print_args(char **arg_list, int num_args) {
 }
 
 void free_args(char **arg_list, int num_args) {
-    for(int i = 0; i < num_args; i++)
+#ifdef DEBUG
+	printf("freeing args...\n");
+#endif
+    for(int i = 0; i < num_args; i++) {
+#ifdef DEBUG
+		printf("freeing %s...\n",arg_list[i]);
+#endif
         free(arg_list[i]);
+#ifdef DEBUG
+		printf("freed\n");
+#endif
+	}
     free(arg_list);
+
 }
 
 void toggle_sensors(struct odroid_state * state, char state_code) {
@@ -68,7 +79,7 @@ void init_odroid_state(struct odroid_state * state) {
 
     toggle_sensors(state,SENSOR_START); // turn the sensors on
 	printf("waiting for sensors to warm up...\n");
-	sleep(5); // allow sensors to warm up
+	sleep(2); // allow sensors to warm up
 
 
     state->read_fds[0] = open(SENSOR_W(0045),O_RDONLY); // setup the reading of the sensors
@@ -140,12 +151,16 @@ int get_cid(int pid,int tid) { // opens stats file and gets cid of task
         if (prev != std::string::npos && index != std::string::npos)
             cid = std::stoi(line.substr(prev,index-prev));
         else {
+#ifdef DEBUG
             fprintf(stderr,"error: the index was not found\n");
+#endif
             stat_file.close();
             return -1;
         }
-    } else {
+    } else { // likely task ended before we could read it
+#ifdef DEBUG
         fprintf(stderr,"error: could not read stat file: %s\n",filename);
+#endif
         stat_file.close();
         return -1;
     }
@@ -243,7 +258,7 @@ int main(int argc, char **argv) {
     }
 
     int buffer_size = 104857600; // 100 mb, maybe change this
-    char out_filename[] = "monitor-results";
+    char out_filename[] = "/tmp/monitor-results";
     FILE * file = fopen (out_filename, "w");
     if (!file) {
         fprintf(stderr,"error: could not open '%s', Error %d:%s\n",out_filename,errno,strerror(errno));
@@ -351,14 +366,20 @@ int main(int argc, char **argv) {
 		fprintf(stderr,"writing out data...\n");
 #endif
         circular_buf_free(cpu_handle);
-		if (!will_attach)
-			free_args(new_argv,argc - num_args_to_skip);
+		//if (!will_attach)
+		//	free_args(new_argv,argc - num_args_to_skip); // not sure if these needs to be done?
         free(buffer);
 #ifdef DEBUG
 		fprintf(stderr,"ending odroid state...\n");
 #endif
         end_odroid_state(state);
+#ifdef DEBUG
+		printf("freeing state...\n");
+#endif
         free(state);
+#ifdef DEBUG
+		printf("closing file...\n");
+#endif
         fclose(file);
 #ifdef DEBUG
 		fprintf(stderr,"finished.\n");
