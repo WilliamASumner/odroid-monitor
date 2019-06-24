@@ -1,6 +1,8 @@
 //Written by Will Sumner
 //Under Dr. Vinicius Petrucci
 /* Macro to allow affinity changes within a scope, only needs to be used once */
+#ifndef CPU_UTILS_H
+#define CPU_UTILS_H
 #define AFF_IN_SCOPE      \
 	cpu_set_t mask;   \
 	CPU_ZERO(&mask); 
@@ -35,3 +37,7 @@
 	CPU_SET(7,&mask); \
 	sched_setaffinity(0,sizeof(mask),&mask);
 
+void _set_little_affinity(void);
+void _set_big_affinity(void);
+void _set_all_affinity(void);
+#endif
