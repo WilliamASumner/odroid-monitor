@@ -1,6 +1,6 @@
 *.out
 release/
-debug/
+debugging/
 *.tar
 monitor
 monitordebug
