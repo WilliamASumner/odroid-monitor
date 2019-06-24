@@ -18,6 +18,10 @@ typedef circular_buf_t* cbuf_handle_t;
 /// Returns a circular buffer handle
 cbuf_handle_t circular_buf_init(u_int8_t* buffer, size_t size, FILE * file);
 
+/// Write the contents of the buffer to a file
+/// Must contain a valid file pointer
+void circular_buf_write(cbuf_handle_t cbuf);
+
 /// Free a circular buffer structure.
 /// Does not free data buffer; owner is responsible for that
 void circular_buf_free(cbuf_handle_t cbuf);
