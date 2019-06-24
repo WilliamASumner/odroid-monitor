@@ -7,7 +7,7 @@ import sys
 
 #data = genfromtxt("logs/kmean/" + sys.argv[1],
 '''
-data = np.genfromtxt("logs/kmean/mon-big-local.log",
+data = np.genfromtxt("logs/kmean/mon-all-edited.log",
        delimiter=';',
        skip_header=1,
        names=None,
@@ -58,27 +58,35 @@ unqiue_threads,indices = np.unique(data['TID0'],return_inverse=True)
 
 
 
-fig, axs = plt.subplots(2, 1, figsize=(8, 8))
+fig, axs = plt.subplots(3, 1, figsize=(8, 8))
 axs[0].set_ylabel('Power (W)')
 axs[0].set_xlabel('Time(us)')
-axs[0].set_title('Power used by A15 Cluster over Time')
+axs[0].set_title('Power used by A7 Cluster over Time')
 axs[0].set_xticks(timestamp_ticks)
 axs[0].xaxis.get_major_formatter().set_powerlimits((0, 1))
 plt.setp(axs[0].get_xticklabels(), rotation=30, horizontalalignment='right')
 
-axs[1].set_ylabel('Core ID')
+axs[1].set_ylabel('Power (W)')
 axs[1].set_xlabel('Time(us)')
-axs[1].set_title('Core ID of Thread 1 over Time')
+axs[1].set_title('Power used by A15 Cluster over Time')
 axs[1].set_xticks(timestamp_ticks)
 axs[1].xaxis.get_major_formatter().set_powerlimits((0, 1))
-axs[1].tick_params(labelcolor='black', labelsize='medium', width=3)
 plt.setp(axs[1].get_xticklabels(), rotation=30, horizontalalignment='right')
+
+axs[2].set_ylabel('Core ID')
+axs[2].set_xlabel('Time(us)')
+axs[2].set_title('Core ID of Thread 1 over Time')
+axs[2].set_xticks(timestamp_ticks)
+axs[2].xaxis.get_major_formatter().set_powerlimits((0, 1))
+axs[2].tick_params(labelcolor='black', labelsize='medium', width=3)
+plt.setp(axs[2].get_xticklabels(), rotation=30, horizontalalignment='right')
 
 fig.tight_layout() # Or equivalently,  "plt.tight_layout()"
 
 
-axs[0].plot(data['Timestamp'], data['SENS_A15'])
-axs[1].plot(data['Timestamp'],data['CID1'],'b-');
+axs[0].plot(data['Timestamp'], data['SENS_A7'])
+axs[1].plot(data['Timestamp'], data['SENS_A15'])
+axs[2].plot(data['Timestamp'],data['CID1'],'b-');
 
 
 plt.show()
