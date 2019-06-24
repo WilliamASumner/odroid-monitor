@@ -60,22 +60,22 @@ $(DEBDIR):
 #########    RELEASE    ###########
 ###################################
 
-$(RELDIR)/monitor.o: monitor.cpp monitor.h circ_buff.h circ_buff.cpp
+$(RELDIR)/monitor.o: monitor.cpp monitor.h circ_buff.h circ_buff.c
 	$(CPP) $(CFLAGS) -c monitor.cpp -o $@
 
-$(RELDIR)/circ_buff.o: circ_buff.cpp circ_buff.h
-	$(CPP) $(CFLAGS) -c circ_buff.cpp -o $@
+$(RELDIR)/circ_buff.o: circ_buff.c circ_buff.h
+	$(CPP) $(CFLAGS) -c circ_buff.c -o $@
 
 
 ###################################
 #########     DEBUG     ###########
 ###################################
 
-$(DEBDIR)/monitor.debug.o: monitor.cpp monitor.h circ_buff.cpp circ_buff.h
+$(DEBDIR)/monitor.debug.o: monitor.cpp monitor.h circ_buff.c circ_buff.h
 	$(CPP) $(CFLAGS) $(DFLAGS) -c monitor.cpp -o $@
 
-$(DEBDIR)/circ_buff.debug.o: circ_buff.cpp circ_buff.h
-	$(CPP) $(CFLAGS) $(DFLAGS) -c circ_buff.cpp -o $@
+$(DEBDIR)/circ_buff.debug.o: circ_buff.c circ_buff.h
+	$(CPP) $(CFLAGS) $(DFLAGS) -c circ_buff.c -o $@
 
 clean:
 	-@rm -rf $(RELDIR)/ $(DEBDIR)/ 2>/dev/null || true # 
