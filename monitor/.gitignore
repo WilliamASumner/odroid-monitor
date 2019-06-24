@@ -5,3 +5,5 @@ debugging/
 monitor
 monitordebug
 valgrind-test.sh
+.*.un~
+.*.swp
