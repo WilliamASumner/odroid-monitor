@@ -35,20 +35,10 @@ void print_args(char **arg_list, int num_args) {
 }
 
 void free_args(char **arg_list, int num_args) {
-#ifdef DEBUG
-    printf("freeing args...\n");
-#endif
     for(int i = 0; i < num_args; i++) {
-#ifdef DEBUG
-        printf("freeing %s...\n",arg_list[i]);
-#endif
         free(arg_list[i]);
-#ifdef DEBUG
-        printf("freed\n");
-#endif
     }
     free(arg_list);
-
 }
 
 void toggle_sensors(struct odroid_state * state, char state_code) {
@@ -106,22 +96,6 @@ void end_odroid_state(struct odroid_state * state) { // cleanup
         close(state->read_fds[i]);
         close(state->enable_fds[i]);
     }
-}
-
-int get_power_ioctl(struct odroid_state * state, cbuf_handle_t handle) {
-    int i;
-    char raw_data[10];
-    for (i = 0; i < NUM_SENSORS; i++) {
-        if (pread(state->read_fds[i], raw_data,sizeof(raw_data),0) > 0) {
-            raw_data[8] = ';'; // null terminate
-            raw_data[9] = 0; // null terminate
-            if (circular_buf_put_bytes(handle,(u_int8_t *)raw_data, strlen(raw_data)) != strlen(raw_data)) {
-                fprintf(stderr,"error: unable to write to buffer\n");
-                return -2;
-            }
-        }
-    }
-    return 1;
 }
 
 int get_power(struct odroid_state * state, cbuf_handle_t handle) {
@@ -379,27 +353,12 @@ int main(int argc, char **argv) {
             fprintf(stderr,"Error running child process\n");
 
         // cleanup!
-#ifdef DEBUG
-        fprintf(stderr,"writing out data...\n");
-#endif
         circular_buf_free(cpu_handle);
         //if (!will_attach)
         //  free_args(new_argv,argc - num_args_to_skip); // not sure if these needs to be done?
-#ifdef DEBUG
-        fprintf(stderr,"ending odroid state...\n");
-#endif
         end_odroid_state(state);
-#ifdef DEBUG
-        printf("freeing state...\n");
-#endif
         free(state);
-#ifdef DEBUG
-        printf("closing file...\n");
-#endif
         fclose(file);
-#ifdef DEBUG
-        fprintf(stderr,"finished.\n");
-#endif
     }
     return 0;
 }
