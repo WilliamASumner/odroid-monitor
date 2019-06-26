@@ -409,7 +409,7 @@ int main(int argc, char **argv) {
             if (ptrace(PTRACE_SEIZE,pid, NULL, NULL) == -1){ // attach to that pid, but dont stop it
                 fprintf(stderr,"error: could not seize process: %d\n",pid);
                 fprintf(stderr,"try running as root, alternatively process may not exist\n");
-                free_circ_buffer(file_handle,power_handle);
+                free_circ_buffer(file_handle);
                 return -1;
 
             }
