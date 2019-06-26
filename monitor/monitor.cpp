@@ -163,7 +163,7 @@ int get_timestamp(cbuf_handle_t handle) { // just writes the timestamp
     struct timeval retrieve; // timestamp
     char time_str[100];
     gettimeofday(&retrieve,0); // get timestamp
-    snprintf(time_str,100,"%ld.%06ld:",retrieve.tv_sec, retrieve.tv_usec); // write down the time of measurement in the standard format
+    snprintf(time_str,100,"%ld%06ld:",retrieve.tv_sec, retrieve.tv_usec); // write down the time of measurement in the standard format
     if (circular_buf_put_bytes(handle,(u_int8_t *)time_str, strlen(time_str)) != strlen(time_str)) {
         fprintf(stderr,"error: unable to write to buffer\n");
         return -1;
@@ -234,12 +234,13 @@ void sig_handler(int signo) {
 }
 
 int collect_stats(cbuf_handle_t file_handle, char mode, int pid, struct odroid_state * state) {
-    printf("collecting stats\n");
+	if (get_timestamp(file_handle) != 0)
+		return -1;
     switch (mode) {
         case 'e': // energy
-            if (get_timestamp(file_handle) != 0) // TODO clean this up
-                return -1;
-            break;
+			if (get_power(state,file_handle) != 0)
+				return -1;
+			break;
         case 'c': // cpu config
             if (get_cpu_config(pid,file_handle) != 0 )
                 return -1;
@@ -425,11 +426,10 @@ int main(int argc, char **argv) {
 
         int status;
         pid_t return_pid = waitpid(pid, &status, WNOHANG);
-        int error = 1;
+        int error = 0;
         struct odroid_state * state = (struct odroid_state *)malloc(sizeof(struct odroid_state));
         if (mode != 'c') // if not cpu_config_only
             init_odroid_state(state);
-
 
         while ((return_pid = waitpid(pid,&status,WNOHANG)) == 0 && !error && !signal_cleanup) { // while the thread isnt done
             error = collect_stats(file_handle,mode,pid,state);
