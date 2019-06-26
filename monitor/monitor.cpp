@@ -103,7 +103,7 @@ int get_power(struct odroid_state * state, cbuf_handle_t handle) {
     char raw_data[10];
     for (i = 0; i < NUM_SENSORS; i++) {
         if (pread(state->read_fds[i], raw_data,sizeof(raw_data),0) > 0) {
-            raw_data[8] = ';'; // null terminate
+            raw_data[8] = ';'; // delimiter
             raw_data[9] = 0; // null terminate
             if (circular_buf_put_bytes(handle,(u_int8_t *)raw_data, strlen(raw_data)) != strlen(raw_data)) {
                 fprintf(stderr,"error: unable to write to buffer\n");
