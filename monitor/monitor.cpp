@@ -433,11 +433,11 @@ int main(int argc, char **argv) {
 
         while ((return_pid = waitpid(pid,&status,WNOHANG)) == 0 && !error && !signal_cleanup) { // while the thread isnt done
             error = collect_stats(file_handle,mode,pid,state);
-            nanosleep(&del,&rem); // sleep for the requisite amount of time
-			while(nanosleep(&rem,&rem) != 0); // sleep off the remainder
+			if (nanosleep(&del,&rem) != 0 && errno == EINTR) // try to sleep for the requisite amount of time
+				while(nanosleep(&rem,&rem) != 0) {} // sleep off the remainder if interrupted
         }
         if (return_pid < 0 && !will_attach )
-            fprintf(stderr,"Error running child process\n");
+            fprintf(stderr,"error: %d, %s\n",errno,strerror(errno));
 
         // cleanup!
         close_circ_buffer(file_handle);
