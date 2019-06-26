@@ -255,7 +255,7 @@ int collect_stats(cbuf_handle_t file_handle, char mode, int pid, struct odroid_s
     return 0;
 }
 
-void free_circ_buffer(cbuf_handle_t handle) {
+void close_circ_buffer(cbuf_handle_t handle) {
     if (handle) {
         circular_buf_write(handle); // write out the data
         if (handle->file) {
@@ -355,7 +355,7 @@ int main(int argc, char **argv) {
     int num_args_to_skip = 5;
     if (argc - num_args_to_skip < 0 ) {
         print_usage(argv[0]);
-        free_circ_buffer(file_handle);
+        close_circ_buffer(file_handle);
         return -1;
     }
 
@@ -363,12 +363,12 @@ int main(int argc, char **argv) {
         new_argv = (char **)malloc((argc-num_args_to_skip)*sizeof(char *)); // new arglist
         if (new_argv == NULL) {
             fprintf(stderr,"Error: error allocating memory\n");
-            free_circ_buffer(file_handle);
+            close_circ_buffer(file_handle);
             return -1;
         } else if (argc < 3 || strnlen(argv[num_args_to_skip],101) > 100) {
             fprintf(stderr,"Error: improperly formatted command\n");
             print_usage(argv[0]);
-            free_circ_buffer(file_handle);
+            close_circ_buffer(file_handle);
             return -1;
         }
         strncpy(prog_name,argv[num_args_to_skip],100);
@@ -378,7 +378,7 @@ int main(int argc, char **argv) {
             if (new_argv[i-num_args_to_skip] == NULL)  {
                 fprintf(stderr, "Error copying new argv array\n");
                 free_args(new_argv,i-num_args_to_skip); // just cleanup what we can
-                free_circ_buffer(file_handle);
+                close_circ_buffer(file_handle);
                 return -1;
             }
             strncpy(new_argv[i-num_args_to_skip],argv[i],100);
@@ -389,7 +389,7 @@ int main(int argc, char **argv) {
         will_attach = 1;
     } else {
         fprintf(stderr,"error: invalid ID supplied\n");
-        free_circ_buffer(file_handle);
+        close_circ_buffer(file_handle);
         return -1;
     }
 
@@ -409,7 +409,7 @@ int main(int argc, char **argv) {
             if (ptrace(PTRACE_SEIZE,pid, NULL, NULL) == -1){ // attach to that pid, but dont stop it
                 fprintf(stderr,"error: could not seize process: %d\n",pid);
                 fprintf(stderr,"try running as root, alternatively process may not exist\n");
-                free_circ_buffer(file_handle);
+                close_circ_buffer(file_handle);
                 return -1;
 
             }
@@ -418,7 +418,7 @@ int main(int argc, char **argv) {
 #else
         if (will_attach) {
             fprintf(stderr,"error: attach functionality not yet implemented for this system\n");
-            free_circ_buffer(file_handle);
+            close_circ_buffer(file_handle);
             return -1;
         }
 #endif
@@ -439,7 +439,7 @@ int main(int argc, char **argv) {
             fprintf(stderr,"Error running child process\n");
 
         // cleanup!
-        free_circ_buffer(file_handle);
+        close_circ_buffer(file_handle);
         //if (!will_attach)
         //  free_args(new_argv,argc - num_args_to_skip); // not sure if these needs to be done?
         if (mode != 'c')
